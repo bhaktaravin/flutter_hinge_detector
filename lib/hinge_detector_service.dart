@@ -4,24 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
-enum HingeState {
-  unknown,
-  closed,
-  halfOpen,
-  open,
-  flat,
-  laptop,
-  book,
-  tent,
-}
+enum HingeState { unknown, closed, halfOpen, open, flat, laptop, book, tent }
 
-enum FoldableType {
-  unknown,
-  surfaceDuo,
-  galaxyFold,
-  pixelFold,
-  generic,
-}
+enum FoldableType { unknown, surfaceDuo, galaxyFold, pixelFold, generic }
 
 class HingeData {
   final HingeState state;
@@ -48,11 +33,12 @@ class HingeData {
 
 class HingeDetectorService {
   static const MethodChannel _channel = MethodChannel('hinge_detector');
-  
-  final StreamController<HingeData> _hingeStateController = StreamController<HingeData>.broadcast();
+
+  final StreamController<HingeData> _hingeStateController =
+      StreamController<HingeData>.broadcast();
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
   StreamSubscription<GyroscopeEvent>? _gyroscopeSubscription;
-  
+
   HingeData _currentHingeData = HingeData(
     state: HingeState.unknown,
     angle: 0.0,
@@ -60,7 +46,7 @@ class HingeDetectorService {
     isPostureSupported: false,
     timestamp: DateTime.now(),
   );
-  
+
   FoldableType _deviceType = FoldableType.unknown;
   bool _isInitialized = false;
 
@@ -69,11 +55,11 @@ class HingeDetectorService {
 
   Future<void> initialize() async {
     if (_isInitialized) return;
-    
+
     await _detectDeviceType();
     await _setupSensorListeners();
     await _setupNativeHingeDetection();
-    
+
     _isInitialized = true;
   }
 
@@ -81,13 +67,14 @@ class HingeDetectorService {
     try {
       final deviceInfo = DeviceInfoPlugin();
       final androidInfo = await deviceInfo.androidInfo;
-      
+
       final model = androidInfo.model.toLowerCase();
       final manufacturer = androidInfo.manufacturer.toLowerCase();
-      
+
       if (manufacturer.contains('microsoft') && model.contains('surface')) {
         _deviceType = FoldableType.surfaceDuo;
-      } else if (manufacturer.contains('samsung') && (model.contains('fold') || model.contains('flip'))) {
+      } else if (manufacturer.contains('samsung') &&
+          (model.contains('fold') || model.contains('flip'))) {
         _deviceType = FoldableType.galaxyFold;
       } else if (manufacturer.contains('google') && model.contains('fold')) {
         _deviceType = FoldableType.pixelFold;
@@ -106,7 +93,7 @@ class HingeDetectorService {
       if (result != null) {
         _updateHingeData(result.toDouble(), true);
       }
-      
+
       // Set up periodic native hinge checks
       Timer.periodic(const Duration(milliseconds: 100), (timer) async {
         try {
@@ -125,12 +112,16 @@ class HingeDetectorService {
 
   Future<void> _setupSensorListeners() async {
     // Listen to accelerometer for device orientation changes
-    _accelerometerSubscription = accelerometerEventStream().listen((AccelerometerEvent event) {
+    _accelerometerSubscription = accelerometerEventStream().listen((
+      AccelerometerEvent event,
+    ) {
       _processSensorData(event.x, event.y, event.z);
     });
 
     // Listen to gyroscope for rotation detection
-    _gyroscopeSubscription = gyroscopeEventStream().listen((GyroscopeEvent event) {
+    _gyroscopeSubscription = gyroscopeEventStream().listen((
+      GyroscopeEvent event,
+    ) {
       _processGyroscopeData(event.x, event.y, event.z);
     });
   }
@@ -139,32 +130,40 @@ class HingeDetectorService {
     // Calculate device orientation based on accelerometer data
     final double magnitude = sqrt(x * x + y * y + z * z);
     if (magnitude < 0.1) return; // Ignore very small movements
-    
+
     // Normalize the values
     final normalizedX = x / magnitude;
     final normalizedY = y / magnitude;
     final normalizedZ = z / magnitude;
-    
+
     // Estimate hinge angle based on orientation
-    double estimatedAngle = _estimateHingeAngle(normalizedX, normalizedY, normalizedZ);
-    
+    double estimatedAngle = _estimateHingeAngle(
+      normalizedX,
+      normalizedY,
+      normalizedZ,
+    );
+
     _updateHingeData(estimatedAngle, false);
   }
 
   void _processGyroscopeData(double x, double y, double z) {
     // Use gyroscope data to detect rapid hinge movements
     final rotationMagnitude = sqrt(x * x + y * y + z * z);
-    
+
     if (rotationMagnitude > 2.0) {
       // Rapid rotation detected - possibly opening/closing hinge
-      _updateHingeData(_currentHingeData.angle, _currentHingeData.isPostureSupported, isRapidMovement: true);
+      _updateHingeData(
+        _currentHingeData.angle,
+        _currentHingeData.isPostureSupported,
+        isRapidMovement: true,
+      );
     }
   }
 
   double _estimateHingeAngle(double x, double y, double z) {
     // This is a simplified hinge angle estimation
     // In a real implementation, this would be calibrated for specific devices
-    
+
     switch (_deviceType) {
       case FoldableType.surfaceDuo:
         return _estimateSurfaceDuoAngle(x, y, z);
@@ -201,9 +200,13 @@ class HingeDetectorService {
     return angle.clamp(0, 180);
   }
 
-  void _updateHingeData(double angle, bool isPostureSupported, {bool isRapidMovement = false}) {
+  void _updateHingeData(
+    double angle,
+    bool isPostureSupported, {
+    bool isRapidMovement = false,
+  }) {
     final hingeState = _determineHingeState(angle);
-    
+
     final newHingeData = HingeData(
       state: hingeState,
       angle: angle,
@@ -226,7 +229,7 @@ class HingeDetectorService {
   bool _shouldEmitUpdate(HingeData newData) {
     // Emit if state changed or angle changed significantly
     return _currentHingeData.state != newData.state ||
-           (newData.angle - _currentHingeData.angle).abs() > 5.0;
+        (newData.angle - _currentHingeData.angle).abs() > 5.0;
   }
 
   HingeState _determineHingeState(double angle) {
@@ -251,6 +254,14 @@ class HingeDetectorService {
   // Simulate hinge angle changes for testing on non-foldable devices
   void simulateHingeChange(double angle) {
     _updateHingeData(angle, false);
+  }
+
+  // Update hinge state (for use by camera or other detection services)
+  void updateHingeState(HingeData hingeData) {
+    if (_shouldEmitUpdate(hingeData)) {
+      _currentHingeData = hingeData;
+      _hingeStateController.add(_currentHingeData);
+    }
   }
 
   void dispose() {

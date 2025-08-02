@@ -47,5 +47,7 @@
 	<true/>
 	<key>NSMotionUsageDescription</key>
 	<string>This app uses motion sensors to detect device orientation and simulate hinge detection.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app uses the camera to detect hinge angles on foldable devices through computer vision.</string>
 </dict>
 </plist>

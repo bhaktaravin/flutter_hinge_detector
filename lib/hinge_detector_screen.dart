@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
-import 'dart:io';
 import 'hinge_detector_service.dart';
-import 'ios_hinge_detector_service.dart';
+import 'hinge_detector_factory.dart';
+import 'camera_hinge_detector_service.dart';
+import 'camera_hinge_demo.dart';
 
 class HingeDetectorScreen extends StatefulWidget {
   const HingeDetectorScreen({super.key});
@@ -13,7 +14,7 @@ class HingeDetectorScreen extends StatefulWidget {
 
 class _HingeDetectorScreenState extends State<HingeDetectorScreen>
     with TickerProviderStateMixin {
-  late final HingeDetectorService _hingeService;
+  HingeDetectorService? _hingeService;
   HingeData _currentHingeData = HingeData(
     state: HingeState.unknown,
     angle: 0.0,
@@ -26,16 +27,16 @@ class _HingeDetectorScreenState extends State<HingeDetectorScreen>
   late Animation<double> _animation;
   bool _isSimulationMode = false;
   double _simulationAngle = 0.0;
+  HingeDetectionMethod _detectionMethod = HingeDetectionMethod.auto;
+  bool _showCameraPreview = false;
 
   @override
   void initState() {
     super.initState();
-    
-    // Use iOS-specific service on iOS, regular service on other platforms
-    _hingeService = Platform.isIOS 
-        ? IOSHingeDetectorService() 
-        : HingeDetectorService();
-        
+
+    // Use factory to create the appropriate detector
+    _hingeService = HingeDetectorFactory.create(method: _detectionMethod);
+
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 500),
       vsync: this,
@@ -48,8 +49,8 @@ class _HingeDetectorScreenState extends State<HingeDetectorScreen>
   }
 
   Future<void> _initializeHingeDetection() async {
-    await _hingeService.initialize();
-    _hingeService.hingeStateStream.listen((hingeData) {
+    await _hingeService?.initialize();
+    _hingeService?.hingeStateStream.listen((hingeData) {
       if (mounted) {
         setState(() {
           _currentHingeData = hingeData;
@@ -61,7 +62,7 @@ class _HingeDetectorScreenState extends State<HingeDetectorScreen>
 
   @override
   void dispose() {
-    _hingeService.dispose();
+    _hingeService?.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -170,7 +171,9 @@ class _HingeDetectorScreenState extends State<HingeDetectorScreen>
                     children: [
                       Text(
                         _currentHingeData.state.name.toUpperCase(),
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        style: Theme.of(
+                          context,
+                        ).textTheme.headlineSmall?.copyWith(
                           color: _getStateColor(_currentHingeData.state),
                           fontWeight: FontWeight.bold,
                         ),
@@ -188,7 +191,10 @@ class _HingeDetectorScreenState extends State<HingeDetectorScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildInfoChip('Angle', '${_currentHingeData.angle.toStringAsFixed(1)}°'),
+                _buildInfoChip(
+                  'Angle',
+                  '${_currentHingeData.angle.toStringAsFixed(1)}°',
+                ),
                 _buildInfoChip('Type', _currentHingeData.deviceType.name),
                 _buildInfoChip(
                   'Native Support',
@@ -207,9 +213,9 @@ class _HingeDetectorScreenState extends State<HingeDetectorScreen>
       children: [
         Text(
           label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Colors.grey[600],
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
         ),
         const SizedBox(height: 4),
         Container(
@@ -220,9 +226,9 @@ class _HingeDetectorScreenState extends State<HingeDetectorScreen>
           ),
           child: Text(
             value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
         ),
       ],
@@ -270,7 +276,7 @@ class _HingeDetectorScreenState extends State<HingeDetectorScreen>
                   setState(() {
                     _simulationAngle = value;
                   });
-                  _hingeService.simulateHingeChange(value);
+                  _hingeService?.simulateHingeChange(value);
                 },
               ),
               Row(
@@ -296,13 +302,185 @@ class _HingeDetectorScreenState extends State<HingeDetectorScreen>
         setState(() {
           _simulationAngle = angle;
         });
-        _hingeService.simulateHingeChange(angle);
+        _hingeService?.simulateHingeChange(angle);
       },
       style: ElevatedButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
       child: Text(label),
     );
+  }
+
+  Widget _buildDetectionMethodControls() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.camera_alt, color: Theme.of(context).primaryColor),
+                const SizedBox(width: 8),
+                Text(
+                  'Detection Method',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<HingeDetectionMethod>(
+              value: _detectionMethod,
+              decoration: const InputDecoration(
+                labelText: 'Detection Method',
+                border: OutlineInputBorder(),
+              ),
+              items:
+                  HingeDetectionMethod.values.map((method) {
+                    return DropdownMenuItem(
+                      value: method,
+                      child: Text(_getMethodName(method)),
+                    );
+                  }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  _switchDetectionMethod(value);
+                }
+              },
+            ),
+            if (_detectionMethod == HingeDetectionMethod.camera ||
+                _detectionMethod == HingeDetectionMethod.hybrid) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Text('Show Camera Preview'),
+                  const Spacer(),
+                  Switch(
+                    value: _showCameraPreview,
+                    onChanged: (value) {
+                      setState(() {
+                        _showCameraPreview = value;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              if (_showCameraPreview) ...[
+                const SizedBox(height: 16),
+                _buildCameraPreview(),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getMethodName(HingeDetectionMethod method) {
+    switch (method) {
+      case HingeDetectionMethod.sensors:
+        return 'Sensors Only';
+      case HingeDetectionMethod.camera:
+        return 'Camera Vision';
+      case HingeDetectionMethod.hybrid:
+        return 'Hybrid (Camera + Sensors)';
+      case HingeDetectionMethod.auto:
+        return 'Auto-Select Best';
+    }
+  }
+
+  Widget _buildCameraPreview() {
+    if (_hingeService is HybridHingeDetectorService) {
+      final hybridService = _hingeService as HybridHingeDetectorService;
+      final frontPreview = hybridService.getFrontCameraPreview();
+      final backPreview = hybridService.getBackCameraPreview();
+
+      return SizedBox(
+        height: 200,
+        child: Row(
+          children: [
+            if (backPreview != null)
+              Expanded(
+                child: Column(
+                  children: [
+                    const Text('Back Camera'),
+                    Expanded(child: backPreview),
+                  ],
+                ),
+              ),
+            if (frontPreview != null && backPreview != null)
+              const SizedBox(width: 8),
+            if (frontPreview != null)
+              Expanded(
+                child: Column(
+                  children: [
+                    const Text('Front Camera'),
+                    Expanded(child: frontPreview),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+    } else if (_hingeService is CameraHingeDetectorService) {
+      final cameraService = _hingeService as CameraHingeDetectorService;
+      final backPreview = cameraService.getBackCameraPreview();
+
+      return SizedBox(
+        height: 200,
+        child: backPreview ?? const Center(child: Text('Camera not available')),
+      );
+    }
+
+    return const SizedBox(
+      height: 200,
+      child: Center(child: Text('Camera preview not available')),
+    );
+  }
+
+  Future<void> _switchDetectionMethod(HingeDetectionMethod newMethod) async {
+    setState(() {
+      _detectionMethod = newMethod;
+    });
+
+    // Dispose current service
+    _hingeService?.dispose();
+
+    // Create new service
+    final newService = HingeDetectorFactory.create(method: newMethod);
+    _hingeService = newService;
+
+    try {
+      await newService.initialize();
+      newService.hingeStateStream.listen((hingeData) {
+        if (mounted) {
+          setState(() {
+            _currentHingeData = hingeData;
+          });
+          _animationController.forward(from: 0);
+        }
+      });
+    } catch (e) {
+      // Show error dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder:
+              (context) => AlertDialog(
+                title: const Text('Detection Method Error'),
+                content: Text(
+                  'Failed to initialize ${_getMethodName(newMethod)}: $e',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+        );
+      }
+    }
   }
 
   @override
@@ -313,23 +491,34 @@ class _HingeDetectorScreenState extends State<HingeDetectorScreen>
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
+            icon: const Icon(Icons.camera_alt),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const CameraHingeDemo(),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.info_outline),
             onPressed: () {
               showDialog(
                 context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('About Hinge Detector'),
-                  content: const Text(
-                    'This app detects the hinge state of foldable devices using sensors and native APIs. '
-                    'Use simulation mode to test different hinge positions on regular devices.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('OK'),
+                builder:
+                    (context) => AlertDialog(
+                      title: const Text('About Hinge Detector'),
+                      content: const Text(
+                        'This app detects the hinge state of foldable devices using sensors and native APIs. '
+                        'Use simulation mode to test different hinge positions on regular devices.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('OK'),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
               );
             },
           ),
@@ -345,6 +534,8 @@ class _HingeDetectorScreenState extends State<HingeDetectorScreen>
             _buildStatusCard(),
             const SizedBox(height: 16),
             _buildSimulationControls(),
+            const SizedBox(height: 16),
+            _buildDetectionMethodControls(),
             const SizedBox(height: 16),
             Card(
               child: Padding(
@@ -385,14 +576,16 @@ class HingePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.blue
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
+    final paint =
+        Paint()
+          ..color = Colors.blue
+          ..strokeWidth = 3
+          ..style = PaintingStyle.stroke;
 
-    final fillPaint = Paint()
-      ..color = Colors.blue.withValues(alpha: 0.3)
-      ..style = PaintingStyle.fill;
+    final fillPaint =
+        Paint()
+          ..color = Colors.blue.withValues(alpha: 0.3)
+          ..style = PaintingStyle.fill;
 
     final center = Offset(size.width / 2, size.height / 2);
     final radius = math.min(size.width, size.height) / 3;
@@ -443,7 +636,11 @@ class HingePainter extends CustomPainter {
 
     // Draw angle arc
     canvas.drawArc(
-      Rect.fromCenter(center: center + Offset(radius / 2, 0), width: 40, height: 40),
+      Rect.fromCenter(
+        center: center + Offset(radius / 2, 0),
+        width: 40,
+        height: 40,
+      ),
       0,
       radians,
       false,
@@ -466,10 +663,7 @@ class HingePainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     );
     textPainter.layout();
-    textPainter.paint(
-      canvas,
-      center + Offset(radius / 2 + 30, -10),
-    );
+    textPainter.paint(canvas, center + Offset(radius / 2 + 30, -10));
   }
 
   @override
