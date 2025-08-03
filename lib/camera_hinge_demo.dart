@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'camera_hinge_detector_service.dart';
 
 class CameraHingeDemo extends StatefulWidget {
@@ -252,6 +253,63 @@ class _CameraHingeDemoState extends State<CameraHingeDemo> {
                       ...(_cameraService!.getCameraStatus().entries.map(
                         (e) => Text('${e.key}: ${e.value}'),
                       )),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                color: Colors.red[50],
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Camera Permissions',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      FutureBuilder<Map<String, dynamic>>(
+                        future: _cameraService!.getPermissionStatus(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasData) {
+                            final data = snapshot.data!;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ...data.entries.map(
+                                  (e) => Text('${e.key}: ${e.value}'),
+                                ),
+                                const SizedBox(height: 8),
+                                if (!data['is_granted'])
+                                  Row(
+                                    children: [
+                                      ElevatedButton(
+                                        onPressed: () async {
+                                          final granted =
+                                              await _cameraService!
+                                                  .requestPermissions();
+                                          if (granted) {
+                                            _initializeCamera();
+                                          }
+                                          setState(() {});
+                                        },
+                                        child: const Text('Request Permission'),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      ElevatedButton(
+                                        onPressed: () => openAppSettings(),
+                                        child: const Text('Open Settings'),
+                                      ),
+                                    ],
+                                  ),
+                              ],
+                            );
+                          }
+                          return const Text('Loading permission status...');
+                        },
+                      ),
                     ],
                   ),
                 ),

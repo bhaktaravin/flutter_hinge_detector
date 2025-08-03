@@ -21,18 +21,34 @@ class CameraHingeDetectorService extends HingeDetectorService {
     try {
       print('Starting camera hinge detector initialization...');
 
-      // Request camera permission
+      // Request camera permission with better handling
       print('Requesting camera permissions...');
       final status = await Permission.camera.request();
-      if (!status.isGranted) {
-        throw Exception('Camera permission denied');
+
+      print('Camera permission status: $status');
+
+      if (status.isDenied) {
+        throw Exception(
+          'Camera permission denied. Please enable camera access in Settings.',
+        );
+      } else if (status.isPermanentlyDenied) {
+        throw Exception(
+          'Camera permission permanently denied. Please enable camera access in Settings.',
+        );
+      } else if (!status.isGranted) {
+        throw Exception('Camera permission not granted: $status');
       }
+
       print('Camera permission granted');
 
       // Initialize cameras
       print('Getting available cameras...');
       _cameras = await availableCameras();
       print('Found ${_cameras?.length ?? 0} cameras');
+
+      if (_cameras == null || _cameras!.isEmpty) {
+        throw Exception('No cameras found on this device');
+      }
 
       await _initializeCameras();
 
@@ -406,6 +422,23 @@ class CameraHingeDetectorService extends HingeDetectorService {
       'back_camera_error': _backCamera?.value.errorDescription,
       'analysis_running': _analysisTimer?.isActive ?? false,
     };
+  }
+
+  // Check current permission status
+  Future<Map<String, dynamic>> getPermissionStatus() async {
+    final cameraStatus = await Permission.camera.status;
+    return {
+      'camera_permission': cameraStatus.toString(),
+      'is_granted': cameraStatus.isGranted,
+      'is_denied': cameraStatus.isDenied,
+      'is_permanently_denied': cameraStatus.isPermanentlyDenied,
+    };
+  }
+
+  // Request permissions again
+  Future<bool> requestPermissions() async {
+    final status = await Permission.camera.request();
+    return status.isGranted;
   }
 
   @override
