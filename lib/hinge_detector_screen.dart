@@ -49,15 +49,31 @@ class _HingeDetectorScreenState extends State<HingeDetectorScreen>
   }
 
   Future<void> _initializeHingeDetection() async {
-    await _hingeService?.initialize();
-    _hingeService?.hingeStateStream.listen((hingeData) {
+    try {
+      await _hingeService?.initialize();
+      _hingeService?.hingeStateStream.listen((hingeData) {
+        if (mounted) {
+          setState(() {
+            _currentHingeData = hingeData;
+          });
+          _animationController.forward(from: 0);
+        }
+      });
+    } catch (e) {
+      print('Failed to initialize hinge detection: $e');
+      // Continue with app startup even if hinge detection fails
       if (mounted) {
         setState(() {
-          _currentHingeData = hingeData;
+          _currentHingeData = HingeData(
+            state: HingeState.unknown,
+            angle: 0.0,
+            deviceType: FoldableType.unknown,
+            isPostureSupported: false,
+            timestamp: DateTime.now(),
+          );
         });
-        _animationController.forward(from: 0);
       }
-    });
+    }
   }
 
   @override

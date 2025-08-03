@@ -27,7 +27,7 @@ class CameraHingeDetectorService extends ChangeNotifier {
 
   Future<void> initializeCamera() async {
     try {
-      print('NEW VERSION: Initializing camera for hinge detection...');
+      print('Initializing camera for hinge detection...');
 
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
